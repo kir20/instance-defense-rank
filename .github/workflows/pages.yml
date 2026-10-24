@@ -1,0 +1,53 @@
+# Every 10 minutes: fetch the ranking from the server and deploy the site (rank.json, supporters.txt) to GitHub Pages.
+# rank.json is never committed, so player names do not stay in the git history.
+# Uses only the repository's built-in token (Pages write); no personal access token.
+name: pages
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build site
+        id: build
+        run: |
+          mkdir -p _site
+          cp supporters.txt README.md _site/
+          touch _site/.nojekyll
+          if curl -fsS --max-time 20 https://ld-rank.rank-server.workers.dev/rank.json -o raw.json && jq -e '.clears and .levels' raw.json > /dev/null; then
+            jq '{updated, clears, levels, players}' raw.json > _site/rank.json
+          elif curl -fsS --max-time 20 https://kir20.github.io/instance-defense-rank/rank.json -o _site/rank.json; then
+            echo "server unreachable, keeping the live file"
+          else
+            cp rank.json _site/rank.json
+          fi
+          # skip scheduled deploys when nothing changed
+          changed=true
+          if [ "${{ github.event_name }}" = "schedule" ] && curl -fsS --max-time 20 https://kir20.github.io/instance-defense-rank/rank.json -o live.json; then
+            if [ "$(jq -cS '{clears, levels}' live.json)" = "$(jq -cS '{clears, levels}' _site/rank.json)" ]; then changed=false; fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+      - if: steps.build.outputs.changed == 'true'
+        uses: actions/configure-pages@v5
+      - if: steps.build.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - if: steps.build.outputs.changed == 'true'
+        id: deploy
+        uses: actions/deploy-pages@v4
