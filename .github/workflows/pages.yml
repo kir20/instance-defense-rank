@@ -1,5 +1,6 @@
 # Every 10 minutes: fetch the ranking from the server and deploy the site (rank.json, supporters.txt) to GitHub Pages.
-# rank.json is never committed, so player names do not stay in the git history.
+# Neither file is committed, so player and supporter names do not stay in the git history:
+# rank.json comes from the ranking server, supporters.txt from the private repository variable SUPPORTERS.
 # Uses only the repository's built-in token (Pages write); no personal access token.
 name: pages
 on:
@@ -25,9 +26,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build site
         id: build
+        env:
+          SUPPORTERS: ${{ vars.SUPPORTERS }}
         run: |
           mkdir -p _site
-          cp supporters.txt README.md _site/
+          cp README.md _site/
+          printf '%s\n' "$SUPPORTERS" > _site/supporters.txt
           touch _site/.nojekyll
           if curl -fsS --max-time 20 https://ld-rank.rank-server.workers.dev/rank.json -o raw.json && jq -e '.clears and .levels' raw.json > /dev/null; then
             jq '{updated, clears, levels, players}' raw.json > _site/rank.json
@@ -38,8 +42,9 @@ jobs:
           fi
           # skip scheduled deploys when nothing changed
           changed=true
-          if [ "${{ github.event_name }}" = "schedule" ] && curl -fsS --max-time 20 https://kir20.github.io/instance-defense-rank/rank.json -o live.json; then
-            if [ "$(jq -cS '{clears, levels}' live.json)" = "$(jq -cS '{clears, levels}' _site/rank.json)" ]; then changed=false; fi
+          if [ "${{ github.event_name }}" = "schedule" ] && curl -fsS --max-time 20 https://kir20.github.io/instance-defense-rank/rank.json -o live.json \
+             && curl -fsS --max-time 20 https://kir20.github.io/instance-defense-rank/supporters.txt -o live_supporters.txt; then
+            if [ "$(jq -cS '{clears, levels}' live.json)" = "$(jq -cS '{clears, levels}' _site/rank.json)" ] && cmp -s live_supporters.txt _site/supporters.txt; then changed=false; fi
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
       - if: steps.build.outputs.changed == 'true'
