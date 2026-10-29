@@ -2,6 +2,7 @@
 # Neither file is committed, so player and supporter names do not stay in the git history:
 # rank.json comes from the ranking server, supporters.txt from the private repository variable SUPPORTERS.
 # rank.json also carries "move": keyed name hash -> XP, so a world under a new blueprint can restore talent levels (no names in it).
+# rank.json also carries "clearsBy": top-10 clear counts per difficulty (normal, hard, hard 2, hard 3).
 # Uses only the repository's built-in token (Pages write); no personal access token.
 name: pages
 on:
@@ -35,7 +36,7 @@ jobs:
           printf '%s\n' "$SUPPORTERS" > _site/supporters.txt
           touch _site/.nojekyll
           if curl -fsS --max-time 20 https://ld-rank.rank-server.workers.dev/rank.json -o raw.json && jq -e '.clears and .levels' raw.json > /dev/null; then
-            jq '{updated, clears, levels, players, move}' raw.json > _site/rank.json
+            jq '{updated, clears, clearsBy, levels, players, move}' raw.json > _site/rank.json
           elif curl -fsS --max-time 20 https://kir20.github.io/instance-defense-rank/rank.json -o _site/rank.json; then
             echo "server unreachable, keeping the live file"
           else
@@ -45,7 +46,7 @@ jobs:
           changed=true
           if [ "${{ github.event_name }}" = "schedule" ] && curl -fsS --max-time 20 https://kir20.github.io/instance-defense-rank/rank.json -o live.json \
              && curl -fsS --max-time 20 https://kir20.github.io/instance-defense-rank/supporters.txt -o live_supporters.txt; then
-            if [ "$(jq -cS '{clears, levels, move}' live.json)" = "$(jq -cS '{clears, levels, move}' _site/rank.json)" ] && cmp -s live_supporters.txt _site/supporters.txt; then changed=false; fi
+            if [ "$(jq -cS '{clears, clearsBy, levels, move}' live.json)" = "$(jq -cS '{clears, clearsBy, levels, move}' _site/rank.json)" ] && cmp -s live_supporters.txt _site/supporters.txt; then changed=false; fi
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
       - if: steps.build.outputs.changed == 'true'
